@@ -2,7 +2,9 @@
 title: "STAT 417 Final Code Work"
 author: "Nicholas Todd"
 date: "`r Sys.Date()`"
-output: html_document
+output:
+  pdf_document: default
+  html_document: default
 ---
 
 ```{r setup, include=FALSE}
@@ -11,10 +13,18 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ### Initial data exploration
 ```{r}
+#read the data from the fed website
 library(readr)
-
 url <- "https://fred.stlouisfed.org/graph/fredgraph.csv?id=UNRATE"
 unrate_data <- read_csv(url)
 
+#convert to time series
+unrate_ts <- ts(unrate_data$UNRATE, start = c(1948, 1), frequency = 12)
+#interpolate the NA values
+library(forecast)
+unrate_ts_interp <- na.interp(unrate_ts)
+#decompose and plot
+unrate_decomp <- decompose(unrate_ts_interp)
+plot(unrate_decomp)
 ```
 
