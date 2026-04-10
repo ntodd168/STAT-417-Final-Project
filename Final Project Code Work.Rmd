@@ -26,5 +26,8 @@ unrate_ts_interp <- na.interp(unrate_ts)
 #decompose and plot
 unrate_decomp <- decompose(unrate_ts_interp)
 plot(unrate_decomp)
+#stl and plot
+unrate_stl <- stl(unrate_ts_interp, s.window = "periodic")
+plot(unrate_stl)
 ```
 
