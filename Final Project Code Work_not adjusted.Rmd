@@ -44,11 +44,14 @@ We can see seasonality in the tiny spikes, probably should blow this graph up on
 
 ACF reveals time dependence of the residuals, so we need to model the residuals.
 
-### Residual AR model
+### Residual AR fit model
 ```{r}
 #get the order of the AR fit
 fit_ar <- ar.yw(res, order.max = NULL)
 fit_ar
+#plot the AR fit#################fix this
+#fir_ar_coef <- coefficients(fit_ar$ar)
+#plot(fit_ar_coef)
 
 #look at the residuals for this new model
 fit_ar <- ar.yw(res, order.max = NULL)
@@ -57,5 +60,11 @@ p<- fit_ar$order
 acf(fit_resid[-c(1:p)], main = "ACF AR fit residuals") #remove the first p(order) observations, the rest are res
 ```
 
+### Trend model
+```{r}
+plot(trend)
 
+```
+
+### Seasonal model
 
