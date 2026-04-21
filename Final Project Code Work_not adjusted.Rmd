@@ -11,7 +11,7 @@ output:
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 ```
 
-### Initial data exploration
+### Initial data pull/clean
 ```{r}
 #read the data from the fed website
 library(readr)
@@ -23,11 +23,39 @@ unrate_ts <- ts(unrate_data$UNRATENSA, start = c(1948, 1), frequency = 12)
 #interpolate the NA values
 library(forecast)
 unrate_ts_interp <- na.interp(unrate_ts)
-#decompose and plot
-unrate_decomp <- decompose(unrate_ts_interp)
-plot(unrate_decomp)
-#stl and plot
+```
+
+### ts analysis
+```{r}
+#full data set and smoothing
+plot(unrate_ts_interp, ylab="Unemployment Rate (NSA)", xlab = "time", col = "black", main = "Monthly Unemployment Rate, USA, Not Seasonally Adjusted")
+lines(lowess(unrate_ts_interp, f=0.01), lwd=2, col="red")
+
+#stl analysis
 unrate_stl <- stl(unrate_ts_interp, s.window = "periodic")
 plot(unrate_stl)
+season <- unrate_stl$time.series[,1]
+trend <- unrate_stl$time.series[,2]
+res <- unrate_stl$time.series[,3]
+
+acf(res, main = "ACF(residuals) Unrate data")
 ```
+We can see seasonality in the tiny spikes, probably should blow this graph up on the ppt.
+
+ACF reveals time dependence of the residuals, so we need to model the residuals.
+
+### Residual AR model
+```{r}
+#get the order of the AR fit
+fit_ar <- ar.yw(res, order.max = NULL)
+fit_ar
+
+#look at the residuals for this new model
+fit_ar <- ar.yw(res, order.max = NULL)
+fit_resid <- ts(fit_ar$resid)
+p<- fit_ar$order
+acf(fit_resid[-c(1:p)], main = "ACF AR fit residuals") #remove the first p(order) observations, the rest are res
+```
+
+
 
