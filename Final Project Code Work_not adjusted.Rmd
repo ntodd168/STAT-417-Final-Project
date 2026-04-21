@@ -15,11 +15,11 @@ knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 ```{r}
 #read the data from the fed website
 library(readr)
-url <- "https://fred.stlouisfed.org/data/UNRATENSA"
+url <- "https://fred.stlouisfed.org/graph/fredgraph.csv?id=UNRATENSA"
 unrate_data <- read_csv(url)
 
 #convert to time series
-unrate_ts <- ts(unrate_data$UNRATE, start = c(1948, 1), frequency = 12)
+unrate_ts <- ts(unrate_data$UNRATENSA, start = c(1948, 1), frequency = 12)
 #interpolate the NA values
 library(forecast)
 unrate_ts_interp <- na.interp(unrate_ts)
