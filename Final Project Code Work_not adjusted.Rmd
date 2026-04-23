@@ -49,9 +49,6 @@ ACF reveals time dependence of the residuals, so we need to model the residuals.
 #get the order of the AR fit
 fit_ar <- ar.yw(res, order.max = NULL)
 fit_ar
-#plot the AR fit#################fix this
-#fir_ar_coef <- coefficients(fit_ar$ar)
-#plot(fit_ar_coef)
 
 #look at the residuals for this new model
 fit_ar <- ar.yw(res, order.max = NULL)
@@ -62,8 +59,18 @@ acf(fit_resid[-c(1:p)], main = "ACF AR fit residuals") #remove the first p(order
 
 ### Trend model
 ```{r}
-plot(trend)
+time <- 1:length(trend)
+dat.trend <- data.frame(trend = trend, time = time)
 
+#trig fit
+fit_trig <- lm(trend ~ 
+            cos(2*pi*time/12) + sin(2*pi*time/12) +
+            cos(4*pi*time/12) + sin(4*pi*time/12) +
+            cos(6*pi*time/12) + sin(6*pi*time/12),
+          data = dat.trend)
+summary(fit_trig)
+plot(time, trend, pch=".")
+lines(time, fitted(fit), col="red", lwd=2)
 ```
 
 ### Seasonal model
