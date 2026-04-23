@@ -63,15 +63,19 @@ time <- 1:length(trend)
 dat.trend <- data.frame(trend = trend, time = time)
 
 #trig fit
-fit_trig <- lm(trend ~ 
-            cos(2*pi*time/12) + sin(2*pi*time/12) +
-            cos(4*pi*time/12) + sin(4*pi*time/12) +
-            cos(6*pi*time/12) + sin(6*pi*time/12),
-          data = dat.trend)
+fit_trig <- lm(trend ~ cos(2*pi*time/12) +sin(2*pi*time/12) + cos(4*pi*time/12) + sin(4*pi*time/12) + cos(6*pi*time/12) + sin(6*pi*time/12),data = dat.trend)
 summary(fit_trig)
+
+#polynomial fit
+fit_poly <- lm(trend~ poly(time, 5, raw=TRUE), data = dat.trend)
+summary(fit_poly) #need to make a higher degree polynomial??
+  
+#compare the trig and poly fits on the trend plot
 plot(time, trend, pch=".")
-lines(time, fitted(fit), col="red", lwd=2)
+lines(time, fitted(fit_trig), col="red", lwd=2)
+lines(time, fitted(fit_poly), col="blue", lwd=2)
 ```
+Trig fit is not great, polynomial looks promising, but need to make a higher degree.
 
 ### Seasonal model
 
