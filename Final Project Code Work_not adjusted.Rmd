@@ -1,6 +1,6 @@
 ---
 title: "STAT 417 Final Code Work"
-author: "Nicholas Todd"
+author: "Group 8"
 date: "`r Sys.Date()`"
 output:
   pdf_document: default
@@ -23,6 +23,16 @@ unrate_ts <- ts(unrate_data$UNRATENSA, start = c(1948, 1), frequency = 12)
 #interpolate the NA values
 library(forecast)
 unrate_ts_interp <- na.interp(unrate_ts)
+
+#Seasonally adjusted data (for comparison maybe)
+urlb <- "https://fred.stlouisfed.org/graph/fredgraph.csv?id=UNRATE"
+unrate_data_sa <- read_csv(urlb)
+
+#convert to time series
+unratesa_ts <- ts(unrate_data_sa$UNRATE, start = c(1948, 1), frequency = 12)
+#interpolate the NA values
+library(forecast)
+unratesa_ts_interp <- na.interp(unratesa_ts)
 ```
 
 ### ts analysis
@@ -62,20 +72,49 @@ acf(fit_resid[-c(1:p)], main = "ACF AR fit residuals") #remove the first p(order
 time <- 1:length(trend)
 dat.trend <- data.frame(trend = trend, time = time)
 
-#trig fit
-fit_trig <- lm(trend ~ cos(2*pi*time/12) +sin(2*pi*time/12) + cos(4*pi*time/12) + sin(4*pi*time/12) + cos(6*pi*time/12) + sin(6*pi*time/12),data = dat.trend)
+# trig fit
+fit_trig <- lm(trend ~ 
+                 cos(2*pi*time/12) + sin(2*pi*time/12) +
+                 cos(4*pi*time/12) + sin(4*pi*time/12) +
+                 cos(6*pi*time/12) + sin(6*pi*time/12),
+               data = dat.trend)
 summary(fit_trig)
 
-#polynomial fit
-fit_poly <- lm(trend~ poly(time, 5, raw=TRUE), data = dat.trend)
-summary(fit_poly) #need to make a higher degree polynomial??
-  
-#compare the trig and poly fits on the trend plot
-plot(time, trend, pch=".")
+# polynomial fits
+#I() forces literal interpretation of the eqn
+fit_poly10 <- lm(trend ~ time + I(time^2) + I(time^3) + I(time^4) + I(time^5) + I(time^6) + I(time^7) + I(time^8) + I(time^9) + I(time^10), data = dat.trend)
+
+fit_poly9 <- lm(trend ~ time + I(time^2) + I(time^3) + I(time^4) + I(time^5) + I(time^6) + I(time^7) + I(time^8) + I(time^9), data = dat.trend)
+
+fit_poly8 <- lm(trend ~ time + I(time^2) + I(time^3) + I(time^4) + I(time^5) + I(time^6) + I(time^7) + I(time^8), data = dat.trend)
+
+summary(fit_poly10)
+summary(fit_poly9)
+summary(fit_poly8)
+
+# compare trig vs polynomial
+#fitted() applies the coefficients to the model for each data point
+plot(time, trend, pch=".", main="Trend with Trig and Polynomial fit")
 lines(time, fitted(fit_trig), col="red", lwd=2)
-lines(time, fitted(fit_poly), col="blue", lwd=2)
+lines(time, fitted(fit_poly10), col="blue", lwd=2)
+legend("topleft",
+       legend=c("Trend", "Trig fit","Poly fit 10"),
+       col=c("black", "red", "blue"),
+       lwd=2)
+
+# compare polynomial degrees
+plot(time, trend, pch=".", main="Trend with Different Polynomial fits")
+lines(time, fitted(fit_poly10), col="blue", lwd=2)
+lines(time, fitted(fit_poly9), col="orange", lwd=2)
+lines(time, fitted(fit_poly8), col="green", lwd=2)
+legend("topleft",
+       legend=c("Trend", "poly 10","poly 9","poly 8"),
+       col=c("black", "blue", "orange","green"),
+       lwd=2)
+
 ```
-Trig fit is not great, polynomial looks promising, but need to make a higher degree.
+Trig fit is not great, the plot is not even close and the p-values are high.
+Polynomial fit is good: of the three, degree 10 has the lowest residual standard error. 
 
 ### Seasonal model
 
