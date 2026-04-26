@@ -117,4 +117,102 @@ Trig fit is not great, the plot is not even close and the p-values are high.
 Polynomial fit is good: of the three, degree 10 has the lowest residual standard error. 
 
 ### Seasonal model
+```{r}
+time <- 1:length(season)
+dat.season <- data.frame(season = season, time = time)
+
+fit_season1 <- lm(season ~ 
+                   cos(2*pi*time/12) + sin(2*pi*time/12),
+                 data = dat.season)
+
+summary(fit_season1)
+
+fit_season2 <- lm(season ~ 
+                   cos(2*pi*time/12) + sin(2*pi*time/12) +
+                   cos(4*pi*time/12) + sin(4*pi*time/12) +
+                   cos(6*pi*time/12) + sin(6*pi*time/12),
+                 data = dat.season)
+
+summary(fit_season2)
+
+plot(time, season, pch=".", main="Seasonal Component with Trig Fit",
+     xlab="Time", ylab="Seasonal Component")
+lines(time, fitted(fit_season2), col="red")
+legend("topright", legend=c("Seasonal component", "Trig fit"),
+       col=c("black", "red"), lwd=2)
+
+
+```
+Graph is super ugly and compressed, but the more complex trig has higher R squared.
+
+### Combined Models
+```{r}
+#model 1: poly 8 and simple trig
+tr1 <- fitted(fit_poly8)
+
+coef_s1 <- coef(fit_season1)
+
+ss1 <- coef_s1[1] +
+       coef_s1[2]*cos(2*pi*time/12) +
+       coef_s1[3]*sin(2*pi*time/12)
+
+yhat1 <- tr1 + ss1
+
+#model 2: poly 9 and complex trig
+tr2 <- fitted(fit_poly9)
+
+coef_s2 <- coef(fit_season2)
+
+ss2 <- coef_s2[1] +
+       coef_s2[2]*cos(2*pi*time/12) +
+       coef_s2[3]*sin(2*pi*time/12) +
+       coef_s2[4]*cos(4*pi*time/12) +
+       coef_s2[5]*sin(4*pi*time/12) +
+       coef_s2[6]*cos(6*pi*time/12) +
+       coef_s2[7]*sin(6*pi*time/12)
+
+yhat2 <- tr2 + ss2
+
+#model 3: ploy 10 and complex trig
+tr3 <- fitted(fit_poly10)
+
+yhat3 <- tr3 + ss2
+
+#plot the models
+plot(unrate_ts_interp, col="black",
+     main="Model Comparison",
+     ylab="Unemployment Rate")
+
+lines(ts(yhat1, start=start(unrate_ts_interp), frequency=12),
+      col="red")
+
+lines(ts(yhat2, start=start(unrate_ts_interp), frequency=12),
+      col="blue")
+
+lines(ts(yhat3, start=start(unrate_ts_interp), frequency=12),
+      col="green")
+
+legend("topright",
+       legend=c("Actual", "Model1", "Model2", "Model3"),
+       col=c("black", "red", "blue", "green"),
+       lwd=2)
+
+#only recent years
+start_plot <- c(2000,1)
+
+plot(window(unrate_ts_interp, start=start_plot), col="black",
+     main="Model Comparison (Recent Period)",
+     ylab="Unemployment Rate")
+
+lines(window(ts(yhat1, start=start(unrate_ts_interp), frequency=12), start=start_plot),
+      col="red")
+
+lines(window(ts(yhat2, start=start(unrate_ts_interp), frequency=12), start=start_plot),
+      col="blue")
+
+lines(window(ts(yhat3, start=start(unrate_ts_interp), frequency=12), start=start_plot),
+      col="green")
+
+```
+
 
