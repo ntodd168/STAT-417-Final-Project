@@ -214,5 +214,225 @@ lines(window(ts(yhat3, start=start(unrate_ts_interp), frequency=12), start=start
       col="green")
 
 ```
+---
 
+## II. Time Series Data Analysis (Continued): Smoothing Methods & Forecasting
+
+### Naïve Method
+
+The naïve method serves as a simple baseline forecast: each future value is set equal to the most recent observed value. For a non-seasonal series, the forecast for all future horizons $h$ is:
+
+$$\hat{X}_{t+h} = X_t$$
+
+For a seasonal series (seasonal naïve), the forecast repeats the value from the same season in the previous cycle:
+
+$$\hat{X}_{t+h} = X_{t+h-m}$$
+
+where $m$ is the seasonal period. Because `UNRATENSA` exhibits strong monthly seasonality, the seasonal naïve method is the appropriate baseline.
+
+```{r naive-method}
+library(forecast)
+
+# Seasonal naive forecast (12-month seasonality)
+naive_fit <- snaive(unrate_ts_interp, h = 24)
+
+plot(naive_fit,
+     main = "Seasonal Naïve Forecast – UNRATENSA (24-Month Horizon)",
+     ylab = "Unemployment Rate (NSA)",
+     xlab = "Time",
+     col  = "black")
+
+# Residual diagnostics for naive baseline
+naive_resid <- residuals(naive_fit)
+plot(naive_resid,
+     main = "Residuals from Seasonal Naïve Method",
+     ylab = "Residual",
+     xlab = "Time")
+abline(h = 0, col = "red", lty = 2)
+```
+
+The seasonal naïve forecast simply projects the pattern of the previous year forward, providing a useful benchmark against which more sophisticated methods can be compared.
+
+---
+
+### Exponential Smoothing
+
+Exponential smoothing methods assign geometrically decreasing weights to past observations, giving the most recent data the greatest influence on forecasts. Three variants are applied here, chosen based on the characteristics of `UNRATENSA`.
+
+#### Simple Exponential Smoothing (SES)
+
+SES is appropriate when a series has no consistent trend or seasonality — useful here as a reference. The smoothed estimate at time $t$ is:
+
+$$e_t = \alpha X_t + (1 - \alpha)\, e_{t-1}, \quad 0 < \alpha < 1$$
+
+A small $\alpha$ weights historical observations more heavily; a large $\alpha$ reacts quickly to recent changes.
+
+```{r ses}
+# Simple exponential smoothing (no trend, no seasonality -- reference model)
+ses_fit <- HoltWinters(unrate_ts_interp, beta = FALSE, gamma = FALSE)
+ses_fit  # print smoothing parameters
+
+plot(unrate_ts_interp,
+     main = "Simple Exponential Smoothing – UNRATENSA",
+     ylab = "Unemployment Rate (NSA)",
+     xlab = "Time",
+     col  = "black")
+lines(ses_fit$fitted[, 1], col = "red", lwd = 2)
+legend("topright",
+       legend = c("Observed", "SES Fitted"),
+       col    = c("black", "red"),
+       lwd    = 2)
+
+# 24-month forecast
+ses_forecast <- forecast(ses_fit, h = 24)
+plot(ses_forecast,
+     main = "SES – 24-Month Forecast",
+     ylab = "Unemployment Rate (NSA)",
+     xlab = "Time")
+```
+
+#### Holt's Exponential Smoothing (Trend, No Seasonality)
+
+Holt's method extends SES by also estimating the slope (trend) of the series using a second smoothing parameter $\beta$:
+
+$$\ell_t = \alpha X_t + (1-\alpha)(\ell_{t-1} + b_{t-1})$$
+$$b_t = \beta(\ell_t - \ell_{t-1}) + (1-\beta)\, b_{t-1}$$
+
+This is applied to the trend component extracted from the STL decomposition.
+
+```{r holts}
+# Holt's method on the trend component
+holts_fit <- HoltWinters(trend, gamma = FALSE)
+holts_fit  # print alpha and beta
+
+plot(trend,
+     main = "Holt's Exponential Smoothing – Trend Component",
+     ylab = "Trend",
+     xlab = "Time",
+     col  = "black")
+lines(holts_fit$fitted[, 1], col = "blue", lwd = 2)
+legend("topright",
+       legend = c("Trend Component", "Holt's Fitted"),
+       col    = c("black", "blue"),
+       lwd    = 2)
+```
+
+#### Holt-Winters Exponential Smoothing (Trend + Seasonality)
+
+Because `UNRATENSA` has both trend and strong monthly seasonality, Holt-Winters (HW) is the most appropriate exponential smoothing method. HW adds a third smoothing parameter $\gamma$ for the seasonal component:
+
+$$\ell_t = \alpha (X_t - S_{t-m}) + (1-\alpha)(\ell_{t-1} + b_{t-1})$$
+$$b_t = \beta(\ell_t - \ell_{t-1}) + (1-\beta)\, b_{t-1}$$
+$$S_t = \gamma(X_t - \ell_t) + (1-\gamma)\, S_{t-m}$$
+
+where $m = 12$ for monthly data.
+
+```{r holt-winters}
+# Holt-Winters on the full UNRATENSA series
+hw_fit <- HoltWinters(unrate_ts_interp)
+hw_fit  # print alpha, beta, gamma
+
+# Plot fitted vs observed
+plot(unrate_ts_interp,
+     main = "Holt-Winters Exponential Smoothing – UNRATENSA",
+     ylab = "Unemployment Rate (NSA)",
+     xlab = "Time",
+     col  = "black")
+lines(hw_fit$fitted[, 1], col = "darkgreen", lwd = 2)
+legend("topright",
+       legend = c("Observed", "HW Fitted"),
+       col    = c("black", "darkgreen"),
+       lwd    = 2)
+```
+
+---
+
+### Forecast Results
+
+A 24-month ahead forecast is generated from the Holt-Winters model, representing the primary smoothing-based forecast for `UNRATENSA`.
+
+```{r hw-forecast}
+hw_forecast <- forecast(hw_fit, h = 24)
+hw_forecast  # print forecast table
+
+# Full forecast plot
+plot(hw_forecast,
+     main = "Holt-Winters 24-Month Forecast – UNRATENSA",
+     ylab = "Unemployment Rate (NSA)",
+     xlab = "Time",
+     col  = "black")
+
+# Zoomed view (recent period + forecast)
+recent_start <- c(2015, 1)
+plot(window(unrate_ts_interp, start = recent_start),
+     xlim = c(2015, end(hw_forecast$mean)[1] + 1),
+     ylim = range(c(
+       window(unrate_ts_interp, start = recent_start),
+       hw_forecast$lower, hw_forecast$upper
+     ), na.rm = TRUE),
+     main = "HW Forecast – Recent Period & 24-Month Horizon",
+     ylab = "Unemployment Rate (NSA)",
+     xlab = "Time",
+     col  = "black")
+lines(hw_forecast$mean,   col = "darkgreen", lwd = 2)
+lines(hw_forecast$lower[, 2], col = "darkgreen", lty = 2)
+lines(hw_forecast$upper[, 2], col = "darkgreen", lty = 2)
+legend("topright",
+       legend = c("Observed", "HW Forecast", "95% CI"),
+       col    = c("black", "darkgreen", "darkgreen"),
+       lty    = c(1, 1, 2),
+       lwd    = 2)
+```
+
+---
+
+### Forecast Accuracy & Residual Diagnostics
+
+```{r smoothing-accuracy}
+# Accuracy metrics for each method
+cat("=== Seasonal Naive ===\n")
+print(accuracy(naive_fit))
+
+cat("\n=== Simple Exponential Smoothing ===\n")
+ses_fc_train <- forecast(ses_fit, h = 1)
+print(accuracy(ses_forecast))
+
+cat("\n=== Holt-Winters ===\n")
+print(accuracy(hw_forecast))
+```
+
+```{r hw-residuals}
+# Residuals from Holt-Winters
+hw_resid <- residuals(hw_forecast)
+hw_resid_ts <- ts(hw_resid[!is.na(hw_resid)],
+                  start = start(unrate_ts_interp),
+                  frequency = 12)
+
+# Time plot of residuals
+plot(hw_resid_ts,
+     main = "Holt-Winters Forecast Residuals",
+     ylab = "Residual",
+     xlab = "Time")
+abline(h = 0, col = "red", lty = 2)
+
+# ACF of residuals
+acf(hw_resid_ts,
+    lag.max = 36,
+    main    = "ACF of Holt-Winters Residuals")
+
+# Ljung-Box test for residual autocorrelation
+Box.test(hw_resid_ts, lag = 20, type = "Ljung-Box")
+```
+
+---
+
+### Interpretation
+
+The Holt-Winters model captures the level, trend, and seasonal structure of `UNRATENSA` simultaneously. The smoothing parameters estimated by `HoltWinters()` indicate:
+
+- **$\alpha$**: how quickly the model adapts to changes in the level of unemployment.
+- **$\beta$**: how rapidly the estimated trend slope is updated.
+- **$\gamma$**: how strongly the seasonal pattern is re-estimated at each cycle.
+
+Values close to zero indicate that the model relies on the full history rather than reacting sharply to recent observations, which is appropriate for a macroeconomic series with gradual structural shifts. The 24-month forecast provides a smoothing-based projection that will be compared against the ARIMA model in the final comparison section.
 
