@@ -16,37 +16,43 @@ knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 #read the data from the fed website
 library(readr)
 url <- "https://fred.stlouisfed.org/graph/fredgraph.csv?id=UNRATENSA"
-unrate_data <- read_csv(url)
+unratensa_data <- read_csv(url)
 
 #convert to time series
-unrate_ts <- ts(unrate_data$UNRATENSA, start = c(1948, 1), frequency = 12)
+unratensa_ts <- ts(unratensa_data$UNRATENSA, start = c(1948, 1), frequency = 12)
 #interpolate the NA values
 library(forecast)
-unrate_ts_interp <- na.interp(unrate_ts)
+unratensa_ts_interp <- na.interp(unratensa_ts)
+
+#summary stats
+summary(unratensa_ts_interp)
+sd(unratensa_ts_interp)
+
+##############
 
 #Seasonally adjusted data (for comparison maybe)
 urlb <- "https://fred.stlouisfed.org/graph/fredgraph.csv?id=UNRATE"
 unrate_data_sa <- read_csv(urlb)
 
 #convert to time series
-unratesa_ts <- ts(unrate_data_sa$UNRATE, start = c(1948, 1), frequency = 12)
+unrate_ts <- ts(unrate_data_sa$UNRATE, start = c(1948, 1), frequency = 12)
 #interpolate the NA values
 library(forecast)
-unratesa_ts_interp <- na.interp(unratesa_ts)
+unrate_ts_interp <- na.interp(unrate_ts)
 ```
 
 ### ts analysis
 ```{r}
 #full data set and smoothing
-plot(unrate_ts_interp, ylab="Unemployment Rate (NSA)", xlab = "time", col = "black", main = "Monthly Unemployment Rate, USA, Not Seasonally Adjusted")
-lines(lowess(unrate_ts_interp, f=0.01), lwd=2, col="red")
+plot(unratensa_ts_interp, ylab="Unemployment Rate (NSA)", xlab = "time", col = "black", main = "Monthly Unemployment Rate, USA, Not Seasonally Adjusted")
+lines(lowess(unratensa_ts_interp, f=0.01), lwd=2, col="red")
 
 #stl analysis
-unrate_stl <- stl(unrate_ts_interp, s.window = "periodic")
-plot(unrate_stl)
-season <- unrate_stl$time.series[,1]
-trend <- unrate_stl$time.series[,2]
-res <- unrate_stl$time.series[,3]
+unratensa_stl <- stl(unratensa_ts_interp, s.window = "periodic")
+plot(unratensa_stl)
+season <- unratensa_stl$time.series[,1]
+trend <- unratensa_stl$time.series[,2]
+res <- unratensa_stl$time.series[,3]
 
 acf(res, main = "ACF(residuals) Unrate data")
 ```
@@ -74,23 +80,21 @@ dat.trend <- data.frame(trend = trend, time = time)
 
 # trig fit
 fit_trig <- lm(trend ~ 
-                 cos(2*pi*time/12) + sin(2*pi*time/12) +
-                 cos(4*pi*time/12) + sin(4*pi*time/12) +
-                 cos(6*pi*time/12) + sin(6*pi*time/12),
+                 cos(2*pi*time/12) + sin(2*pi*time/12),
                data = dat.trend)
 summary(fit_trig)
 
 # polynomial fits
 #I() forces literal interpretation of the eqn
-fit_poly10 <- lm(trend ~ time + I(time^2) + I(time^3) + I(time^4) + I(time^5) + I(time^6) + I(time^7) + I(time^8) + I(time^9) + I(time^10), data = dat.trend)
+fit_poly3 <- lm(trend ~ time + I(time^2) + I(time^3), data = dat.trend)
 
-fit_poly9 <- lm(trend ~ time + I(time^2) + I(time^3) + I(time^4) + I(time^5) + I(time^6) + I(time^7) + I(time^8) + I(time^9), data = dat.trend)
+fit_poly5 <- lm(trend ~ time + I(time^2) + I(time^3) + I(time^4) + I(time^5), data = dat.trend)
 
 fit_poly8 <- lm(trend ~ time + I(time^2) + I(time^3) + I(time^4) + I(time^5) + I(time^6) + I(time^7) + I(time^8), data = dat.trend)
 
-summary(fit_poly10)
+summary(fit_poly3)
+summary(fit_poly5)
 summary(fit_poly9)
-summary(fit_poly8)
 
 # compare trig vs polynomial
 #fitted() applies the coefficients to the model for each data point
