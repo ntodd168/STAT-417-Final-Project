@@ -65,8 +65,47 @@ p <- fit_ar$order
 
 acf(ar_resid[-c(1:p)], 
     main = "ACF of AR Model Residuals")
+
+#get the order of the AR fit using Yule-Walker
+fit_ar <- ar.yw(res, order.max = NULL)
+fit_ar
+
+# AR residuals from Yule-Walker selected model
+ar_resid <- ts(fit_ar$resid, start=start(unratensa_ts_interp), frequency=12)
+
+# AR fitted values for the residual component
+ar_fit <- res - ar_resid
+
+# remove first p values when checking ACF because AR residuals begin with NA values
+p <- fit_ar$order
+
+acf(ar_resid[-c(1:p)], 
+    main = paste("ACF of Yule-Walker AR(", p, ") Residuals", sep = ""))
+
+
+#lower order AR
+res_clean <- na.omit(as.numeric(res))
+
+# Fit lower-order AR models
+ar1 <- arima(res_clean, order = c(1, 0, 0), include.mean = TRUE)
+ar2 <- arima(res_clean, order = c(2, 0, 0), include.mean = TRUE)
+ar3 <- arima(res_clean, order = c(3, 0, 0), include.mean = TRUE)
+ar4 <- arima(res_clean, order = c(4, 0, 0), include.mean = TRUE)
+ar5 <- arima(res_clean, order = c(5, 0, 0), include.mean = TRUE)
+
+# Compare lower-order models using AIC
+AIC(ar1, ar2, ar3, ar4, ar5)
+
+# Check residual ACFs for lower-order AR models
+acf(residuals(ar1), main = "ACF of AR(1) Residuals")
+acf(residuals(ar2), main = "ACF of AR(2) Residuals")
+acf(residuals(ar3), main = "ACF of AR(3) Residuals")
+acf(residuals(ar4), main = "ACF of AR(4) Residuals")
+acf(residuals(ar5), main = "ACF of AR(5) Residuals")
+
+AIC(ar1, ar2, ar3, ar4, ar5)
 ```
-Yule-Walker method selected an AR(25) model, suggesting that the random shocks have a long-lasting effect on the data.
+Yule-Walker method selected an AR(25) model, suggesting that the random shocks have a long-lasting effect on the data. Examining lower AR fits shows a consistent improvement in AIC, but with diminishing returns. We choose AR(5) as a compromise that improves fit, but does not overfit the model.
 
 
 ### Trend model
@@ -220,7 +259,7 @@ tr_poly8 <- fitted(fit_poly8)
 #seasonal comp, monthly cycle, cycle() fixed to a 1-12 cycle
 month <- cycle(unratensa_ts_interp)
 
-# rebuild seasonal fits###########
+# rebuild seasonal fits
 coef_s1 <- coef(fit_season1)
 coef_s2 <- coef(fit_season2)
 
@@ -236,46 +275,142 @@ ss2 <- coef_s2[1] +
        coef_s2[6]*cos(6*pi*month/12) +
        coef_s2[7]*sin(6*pi*month/12)
 
-#combined models
-yhat1 <- tr_poly3 + ss1
-yhat2 <- tr_poly5 + ss2
-yhat3 <- tr_poly8 + ss2
+#combined regression-only models
+yhat1 <- tr_poly3 + ss1                 # simple
+yhat2 <- tr_poly5 + ss2                 # balanced
+yhat3 <- tr_poly8 + ss2                 # flexible
 
+# convert fitted values to time series
+yhat1_ts <- ts(yhat1, start=start(unratensa_ts_interp), frequency=12)
+yhat2_ts <- ts(yhat2, start=start(unratensa_ts_interp), frequency=12)
+yhat3_ts <- ts(yhat3, start=start(unratensa_ts_interp), frequency=12)
+
+# final residuals for regression-only models
+final_resid1 <- unratensa_ts_interp - yhat1_ts
+final_resid2 <- unratensa_ts_interp - yhat2_ts
+final_resid3 <- unratensa_ts_interp - yhat3_ts
+
+# Function to add AR(5) residual errors
+add_ar5_errors <- function(yhat_ts, actual_ts) {
+  resid <- actual_ts - yhat_ts
+  
+  ar5_fit <- arima(as.numeric(resid),
+                   order = c(5, 0, 0),
+                   include.mean = TRUE)
+  
+  ar5_resid <- residuals(ar5_fit)
+  ar5_component <- as.numeric(resid) - ar5_resid
+  
+  yhat_ar5 <- as.numeric(yhat_ts) + ar5_component
+  
+  return(ts(yhat_ar5,
+            start = start(actual_ts),
+            frequency = frequency(actual_ts)))
+}
+
+# AR(5)-adjusted models
+yhat1_ar5_ts <- add_ar5_errors(yhat1_ts, unratensa_ts_interp)
+yhat2_ar5_ts <- add_ar5_errors(yhat2_ts, unratensa_ts_interp)
+yhat3_ar5_ts <- add_ar5_errors(yhat3_ts, unratensa_ts_interp)
+
+# final residuals for AR(5)-adjusted models
+final_resid1_ar5 <- unratensa_ts_interp - yhat1_ar5_ts
+final_resid2_ar5 <- unratensa_ts_interp - yhat2_ar5_ts
+final_resid3_ar5 <- unratensa_ts_interp - yhat3_ar5_ts
+
+#Regression-only models
 plot(unratensa_ts_interp, col="black",
-     main="Model Comparison",
+     main="Model Comparison: Regression-Only Models",
      ylab="Unemployment Rate")
 
-lines(ts(yhat1, start=start(unratensa_ts_interp), frequency=12), col="red")
-lines(ts(yhat2, start=start(unratensa_ts_interp), frequency=12), col="blue")
-lines(ts(yhat3, start=start(unratensa_ts_interp), frequency=12), col="green")
+lines(yhat1_ts, col="red")
+lines(yhat2_ts, col="blue")
+lines(yhat3_ts, col="green")
 
 legend("topleft",
-       legend=c("Actual", "Model 1 (simple)", "Model 2 (balanced)", "Model 3 (flexible)"),
+       legend=c("Actual",
+                "Model 1: Poly3 + 1 Harmonic",
+                "Model 2: Poly5 + 3 Harmonics",
+                "Model 3: Poly8 + 3 Harmonics"),
        col=c("black", "red", "blue", "green"),
        lwd=2)
 
-#most recent period
+#AR(5)-adjusted models
+plot(unratensa_ts_interp, col="black",
+     main="Model Comparison: Regression + AR(5) Errors",
+     ylab="Unemployment Rate")
+
+lines(yhat1_ar5_ts, col="red")
+lines(yhat2_ar5_ts, col="blue")
+lines(yhat3_ar5_ts, col="green")
+
+legend("topleft",
+       legend=c("Actual",
+                "Model 1 + AR(5)",
+                "Model 2 + AR(5)",
+                "Model 3 + AR(5)"),
+       col=c("black", "red", "blue", "green"),
+       lwd=2)
+
+# Recent period: regression-only models
 start_plot <- c(2000,1)
 
 plot(window(unratensa_ts_interp, start=start_plot), col="black",
-     main="Model Comparison (Recent Period)",
+     main="Regression-Only Models (Recent Period)",
      ylab="Unemployment Rate")
 
-lines(window(ts(yhat1, start=start(unratensa_ts_interp), frequency=12), start=start_plot), col="red")
-lines(window(ts(yhat2, start=start(unratensa_ts_interp), frequency=12), start=start_plot), col="blue")
-lines(window(ts(yhat3, start=start(unratensa_ts_interp), frequency=12), start=start_plot), col="green")
+lines(window(yhat1_ts, start=start_plot), col="red")
+lines(window(yhat2_ts, start=start_plot), col="blue")
+lines(window(yhat3_ts, start=start_plot), col="green")
 
-# final residuals
-final_resid1 <- unratensa_ts_interp - ts(yhat1, start=start(unratensa_ts_interp), frequency=12)
-final_resid2 <- unratensa_ts_interp - ts(yhat2, start=start(unratensa_ts_interp), frequency=12)
-final_resid3 <- unratensa_ts_interp - ts(yhat3, start=start(unratensa_ts_interp), frequency=12)
+legend("topleft",
+       legend=c("Actual",
+                "Model 1",
+                "Model 2",
+                "Model 3"),
+       col=c("black", "red", "blue", "green"),
+       lwd=2)
 
+# Recent period: AR(5)-adjusted models
+plot(window(unratensa_ts_interp, start=start_plot), col="black",
+     main="Regression + AR(5) Errors (Recent Period)",
+     ylab="Unemployment Rate")
+
+lines(window(yhat1_ar5_ts, start=start_plot), col="red")
+lines(window(yhat2_ar5_ts, start=start_plot), col="blue")
+lines(window(yhat3_ar5_ts, start=start_plot), col="green")
+
+legend("topleft",
+       legend=c("Actual",
+                "Model 1 + AR(5)",
+                "Model 2 + AR(5)",
+                "Model 3 + AR(5)"),
+       col=c("black", "red", "blue", "green"),
+       lwd=2)
+
+# ACF comparisons
 acf(final_resid1, main="ACF of Final Residuals: Model 1")
 acf(final_resid2, main="ACF of Final Residuals: Model 2")
 acf(final_resid3, main="ACF of Final Residuals: Model 3")
-```
-Model 3 provides the best regression-based fit because it combines the 8th-degree polynomial trend, which had the lowest AIC/BIC among the trend models, with the 3-harmonic seasonal model, which had much stronger fit statistics than the 1-harmonic model. However, the residual ACF still shows substantial autocorrelation, meaning the regression model captures trend and seasonality but does not fully account for time dependence. This motivates later time series methods such as ARIMA.
 
+acf(final_resid1_ar5, main="ACF: Model 1 + AR(5)")
+acf(final_resid2_ar5, main="ACF: Model 2 + AR(5)")
+acf(final_resid3_ar5, main="ACF: Model 3 + AR(5)")
+
+# Ljung-Box residual checks
+Box.test(final_resid1, lag=12, type="Ljung-Box")
+Box.test(final_resid2, lag=12, type="Ljung-Box")
+Box.test(final_resid3, lag=12, type="Ljung-Box")
+
+Box.test(final_resid1_ar5, lag=12, type="Ljung-Box")
+Box.test(final_resid2_ar5, lag=12, type="Ljung-Box")
+Box.test(final_resid3_ar5, lag=12, type="Ljung-Box")
+```
+The combined regression models demonstrate that incorporating both trend and seasonal components significantly improves the fit to the unemployment data. Among the regression-only models, the 8th-degree polynomial with 3 harmonics provides the closest visual fit, but this comes at the cost of overfitting and instability, particularly at the boundaries.
+
+Residual diagnostics reveal that all regression-only models retain substantial autocorrelation, indicating that deterministic components alone are insufficient to capture the temporal dependence in the data. To address this, AR(5) models were applied to the residuals. This substantially reduced autocorrelation, as evidenced by the large decrease in Ljung-Box test statistics. However, the residuals of the AR(5)-adjusted models still exhibit statistically significant dependence.
+
+Overall, while the combination of regression and AR(5) errors improves model fit, it does not fully resolve the time dependence in the series. This indicates that a more comprehensive stochastic modeling approach is required, motivating the use of ARIMA models in the next section.
 
 ---
 
