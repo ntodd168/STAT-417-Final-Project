@@ -1,0 +1,169 @@
+---
+title: "STAT 417 – Smoothing Methods & Forecasting"
+author: "Haley Patel (Person A)"
+date: "`r Sys.Date()`"
+output:
+  pdf_document:
+    latex_engine: xelatex
+    fig_height: 3.5
+    fig_width: 7
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE,
+                      fig.align = "center")
+```
+
+---
+
+## Setup: Data & STL Decomposition
+
+```{r data-setup}
+library(readr); library(forecast)
+
+# Load UNRATENSA and interpolate NAs
+unrate_data      <- read_csv("https://fred.stlouisfed.org/graph/fredgraph.csv?id=UNRATENSA")
+unrate_ts        <- ts(unrate_data$UNRATENSA, start = c(1948, 1), frequency = 12)
+unrate_ts_interp <- na.interp(unrate_ts)
+```
+
+---
+
+## II. Smoothing Methods & Forecasting
+
+### 1. Naïve Baseline
+
+The **seasonal naïve** method repeats the value from the same month one year prior — the simplest
+possible benchmark for a seasonal series:
+
+$$\hat{X}_{t+h} = X_{t+h-m}, \quad m = 12$$
+
+```{r naive, fig.cap="Seasonal naïve 24-month forecast (top) and its residuals (bottom)", fig.show='hold', out.width="50%"}
+naive_fit   <- snaive(unrate_ts_interp, h = 24)
+
+plot(naive_fit,
+     main = "Seasonal Naïve Forecast – UNRATENSA",
+     ylab = "Unemployment Rate (NSA)", xlab = "Time")
+
+plot(residuals(naive_fit),
+     main = "Residuals – Seasonal Naïve",
+     ylab = "Residual", xlab = "Time")
+abline(h = 0, col = "red", lty = 2)
+```
+
+The residuals show clear structure (large swings around recessions, COVID spike), confirming the naïve
+method leaves systematic patterns unexplained. It serves only as a reference benchmark.
+
+---
+
+### 2. Holt-Winters Exponential Smoothing
+
+The Exploratory Data Analysis (EDA) and Seasonal and Trend decomposition using Loess (STL) decomposition established that UNRATENSA has both a time-varying trend and strong
+monthly seasonality. This rules out Simple Exponential Smoothing (level only) and Holt's method (trend, no seasonality) as
+appropriate models for the raw series. **Holt-Winters (HW)** is therefore the correct exponential
+smoothing model, estimating all three components simultaneously:
+
+$$\ell_t = \alpha(X_t - S_{t-m}) + (1-\alpha)(\ell_{t-1} + b_{t-1})$$
+$$b_t   = \beta(\ell_t - \ell_{t-1}) + (1-\beta)\,b_{t-1}$$
+$$S_t   = \gamma(X_t - \ell_t) + (1-\gamma)\,S_{t-m}$$
+
+where $m = 12$ for monthly data and $\alpha, \beta, \gamma \in (0,1)$ control how quickly each
+component adapts to new observations.
+
+```{r hw-fit, fig.cap="Holt-Winters fitted values overlaid on the full UNRATENSA series"}
+hw_fit <- HoltWinters(unrate_ts_interp)
+hw_fit   # display estimated alpha, beta, gamma
+
+plot(unrate_ts_interp, col = "black",
+     main = "Holt-Winters – Fitted vs Observed",
+     ylab = "Unemployment Rate (NSA)", xlab = "Time")
+lines(hw_fit$fitted[, 1], col = "green", lwd = 1)
+legend("topright", legend = c("Observed","HW Fitted"),
+       col = c("black","green"), lwd = 2, cex = 0.8)
+```
+
+**Result:** $\hat{\alpha} \approx 0.933$, $\hat{\beta} \approx 0.011$, $\hat{\gamma} = 1.000$.
+The high $\alpha$ indicates the level estimate tracks recent observations closely; the low $\beta$
+means the trend slope changes slowly; $\gamma = 1$ means the seasonal factors are updated
+aggressively each month — appropriate for UNRATENSA's stable but precisely-timed seasonal pattern.
+
+---
+
+### 3. Forecast Results
+
+```{r hw-forecast, fig.cap="HW 24-month forecast (full history, top) and zoomed 2015–2028 view (bottom)", fig.show='hold', out.width="50%"}
+hw_forecast <- forecast(hw_fit, h = 24)
+
+# Full history view
+plot(hw_forecast,
+     main = "HW 24-Month Forecast – UNRATENSA",
+     ylab = "Unemployment Rate (NSA)", xlab = "Time")
+
+# Zoomed view
+recent_start <- c(2015, 1)
+plot(window(unrate_ts_interp, start = recent_start),
+     xlim = c(2015, end(hw_forecast$mean)[1] + 1),
+     ylim = range(c(window(unrate_ts_interp, start = recent_start),
+                    hw_forecast$lower, hw_forecast$upper), na.rm = TRUE),
+     main = "HW Forecast – 2015 to 2028",
+     ylab = "Unemployment Rate (NSA)", xlab = "Time", col = "black")
+lines(hw_forecast$mean,        col = "darkgreen", lwd = 2)
+lines(hw_forecast$lower[, 2],  col = "darkgreen", lty = 2)
+lines(hw_forecast$upper[, 2],  col = "darkgreen", lty = 2)
+legend("topright", legend = c("Observed","HW Forecast","95% CI"),
+       col = c("black","darkgreen","darkgreen"),
+       lty = c(1, 1, 2), lwd = 2, cex = 0.8)
+```
+
+The model forecasts unemployment staying near **4.0–4.4%** through early 2028, with the
+characteristic seasonal dip in late summer/fall and uptick in winter–spring. Prediction intervals
+widen considerably beyond 12 months, reflecting genuine uncertainty over longer horizons.
+
+---
+
+### 4. Accuracy & Residual Diagnostics
+
+```{r accuracy-table}
+# Accuracy comparison across methods
+cat("=== Seasonal Naïve ===\n");   print(accuracy(naive_fit))
+cat("\n=== Holt-Winters ===\n");    print(accuracy(hw_forecast))
+```
+
+```{r hw-residuals, fig.cap="HW residual time plot (top) and ACF of residuals (bottom)", fig.show='hold', out.width="50%"}
+hw_resid_ts <- ts(na.omit(residuals(hw_forecast)),
+                  start = start(unrate_ts_interp), frequency = 12)
+
+plot(hw_resid_ts, main = "HW Residuals",
+     ylab = "Residual", xlab = "Time")
+abline(h = 0, col = "red", lty = 2)
+
+acf(hw_resid_ts, lag.max = 36, main = "ACF – HW Residuals")
+```
+
+```{r ljung-box}
+Box.test(hw_resid_ts, lag = 20, type = "Ljung-Box")
+```
+
+**Accuracy summary (training set):**
+
+| Method          | RMSE   | MAE    | MAPE   |
+|-----------------|--------|--------|--------|
+| Seasonal Naïve  | 1.416  | 0.932  | 15.93% |
+| Holt-Winters    | **0.454**  | **0.226**  | **4.13%** |
+
+Holt-Winters achieves substantially lower error on all metrics. The residual ACF shows remaining autocorrelation
+(Ljung-Box p < 0.001), indicating the residuals are not white noise — this motivates the subsequent
+ARIMA modeling step to capture the remaining dependence structure.
+
+---
+
+### Summary
+
+Holt-Winters outperforms the naïve baseline by explicitly modeling UNRATENSA's
+trend and seasonality simultaneously. The estimated parameters ($\alpha \approx 0.93$,
+$\beta \approx 0.01$, $\gamma = 1$) are economically interpretable: the unemployment level
+shifts quickly, the trend evolves slowly, and the seasonal pattern is recalibrated every month.
+The residual diagnostics confirm that HW provides a meaningful improvement over naïve methods,
+while the remaining autocorrelation in residuals sets up the ARIMA analysis (Connor) to build on
+this foundation.
