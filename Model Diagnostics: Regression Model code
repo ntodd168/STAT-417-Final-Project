@@ -1,6 +1,11 @@
-###############################
-# 1. Regression + AR(5) model #
-###############################
+---
+title: "STAT 417 Final Code Work"
+author: "Group 8"
+date: "`r Sys.Date()`"
+output:
+  pdf_document: default
+  html_document: default
+---
 
 # Base residuals 
 final_resid3 <- unratensa_ts_interp - yhat3_ts
