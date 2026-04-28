@@ -1,11 +1,12 @@
 ---
-title: "STAT 417 Final Code Work"
+title: "Regression + AR(5) model"
 author: "Group 8"
-date: "`r Sys.Date()`"
+date: "4/28/2026"
 output:
   pdf_document: default
   html_document: default
 ---
+
 
 # Base residuals 
 final_resid3 <- unratensa_ts_interp - yhat3_ts
@@ -28,14 +29,23 @@ add_ar5_errors <- function(yhat_ts, actual_ts) {
 yhat3_ar5_ts    <- add_ar5_errors(yhat3_ts, unratensa_ts_interp)
 final_resid3_ar5 <- unratensa_ts_interp - yhat3_ar5_ts
 
-# Time plot and ACF for Model 3 + AR(5) residuals
+# Residual plots:
+# Left  = Model 3 (regression only)
+# Right = Model 3 + AR(5)
 par(mfrow = c(1, 2))
+
+plot(final_resid3,
+     main = "Residuals: Model 3 (Regression Only)",
+     ylab = "Residual", xlab = "Time")
+abline(h = 0, col = "red", lty = 2)
 
 plot(final_resid3_ar5,
      main = "Residuals: Model 3 + AR(5)",
      ylab = "Residual", xlab = "Time")
 abline(h = 0, col = "red", lty = 2)
 
+
+# ACF for Model 3 + AR(5) residuals
 acf(final_resid3_ar5,
     main = "ACF: Residuals – Model 3 + AR(5)")
 
