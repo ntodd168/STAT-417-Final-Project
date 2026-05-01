@@ -1,0 +1,43 @@
+---
+title: "STAT 417 Final Code Work"
+author: "Group 8"
+date: "`r Sys.Date()`"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+# Base residuals 
+final_resid3 <- unratensa_ts_interp - yhat3_ts
+
+# Function to add AR(5) error component
+add_ar5_errors <- function(yhat_ts, actual_ts) {
+  resid     <- actual_ts - yhat_ts
+  ar5_fit   <- arima(as.numeric(resid),
+                     order = c(5, 0, 0),
+                     include.mean = TRUE)
+  ar5_resid <- residuals(ar5_fit)
+  ar5_comp  <- as.numeric(resid) - ar5_resid
+  yhat_ar5  <- as.numeric(yhat_ts) + ar5_comp
+  ts(yhat_ar5,
+     start     = start(actual_ts),
+     frequency = frequency(actual_ts))
+}
+
+# AR(5)-adjusted Model 3 and residuals
+yhat3_ar5_ts    <- add_ar5_errors(yhat3_ts, unratensa_ts_interp)
+final_resid3_ar5 <- unratensa_ts_interp - yhat3_ar5_ts
+
+# Time plot and ACF for Model 3 + AR(5) residuals
+par(mfrow = c(1, 2))
+
+plot(final_resid3_ar5,
+     main = "Residuals: Model 3 + AR(5)",
+     ylab = "Residual", xlab = "Time")
+abline(h = 0, col = "red", lty = 2)
+
+acf(final_resid3_ar5,
+    main = "ACF: Residuals – Model 3 + AR(5)")
+
+# Ljung–Box test for Model 3 + AR(5) residuals
+Box.test(final_resid3_ar5, lag = 20, type = "Ljung-Box")

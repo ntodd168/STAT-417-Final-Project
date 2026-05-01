@@ -1,0 +1,284 @@
+---
+title: "EDA-Regression-only"
+author: "Group 8"
+date: "`r Sys.Date()`"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+### Initial data pull/clean
+```{r}
+#read the data from the fed website
+library(readr)
+url <- "https://fred.stlouisfed.org/graph/fredgraph.csv?id=UNRATENSA"
+unratensa_data <- read_csv(url)
+
+#convert to time series
+unratensa_ts <- ts(unratensa_data$UNRATENSA, start = c(1948, 1), frequency = 12)
+
+#interpolate the NA values
+library(forecast)
+unratensa_ts_interp <- na.interp(unratensa_ts)
+
+#summary stats
+summary(unratensa_ts_interp)
+sd(unratensa_ts_interp)
+```
+
+### smoothing and stl
+```{r}
+#full data set and smoothing
+plot(unratensa_ts_interp, ylab="Unemployment Rate (NSA)", xlab = "time",
+     col = "black", main = "Monthly Unemployment Rate, USA, Not Seasonally Adjusted")
+lines(lowess(unratensa_ts_interp, f=0.01), lwd=2, col="red")
+
+#stl analysis
+unratensa_stl <- stl(unratensa_ts_interp, s.window = "periodic")
+plot(unratensa_stl)
+
+season <- unratensa_stl$time.series[,1]
+trend <- unratensa_stl$time.series[,2]
+res <- unratensa_stl$time.series[,3]
+
+acf(res, main = "ACF(residuals) Unrate data")
+```
+
+### Residual AR fit model
+```{r}
+#get the order of the AR fit using Yule-Walker
+fit_ar <- ar.yw(res, order.max = NULL)
+fit_ar
+
+#lower order AR
+res_clean <- na.omit(as.numeric(res))
+
+# Fit lower-order AR models
+ar1 <- arima(res_clean, order = c(1, 0, 0), include.mean = TRUE)
+ar2 <- arima(res_clean, order = c(2, 0, 0), include.mean = TRUE)
+ar3 <- arima(res_clean, order = c(3, 0, 0), include.mean = TRUE)
+ar4 <- arima(res_clean, order = c(4, 0, 0), include.mean = TRUE)
+ar5 <- arima(res_clean, order = c(5, 0, 0), include.mean = TRUE)
+
+# Compare lower-order models using AIC
+AIC(ar1, ar2, ar3, ar4, ar5)
+
+# Check selected AR(5) residuals
+acf(residuals(ar5), main = "ACF of AR(5) Residuals")
+```
+
+### Trend model
+```{r}
+time <- 1:length(trend)
+dat.trend <- data.frame(trend = trend, time = time)
+
+# polynomial fits
+fit_poly3 <- lm(trend ~ time + I(time^2) + I(time^3), data = dat.trend)
+
+fit_poly5 <- lm(trend ~ time + I(time^2) + I(time^3) + 
+                  I(time^4) + I(time^5), data = dat.trend)
+
+fit_poly8 <- lm(trend ~ time + I(time^2) + I(time^3) + 
+                  I(time^4) + I(time^5) + I(time^6) + 
+                  I(time^7) + I(time^8), data = dat.trend)
+
+# summaries
+summary(fit_poly3)
+summary(fit_poly5)
+summary(fit_poly8)
+
+# compare polynomial degrees
+plot(time, trend, pch=".", main="Trend with Different Polynomial fits")
+
+lines(time, fitted(fit_poly3), col="blue", lwd=2)
+lines(time, fitted(fit_poly5), col="orange", lwd=2)
+lines(time, fitted(fit_poly8), col="green", lwd=2)
+
+legend("topleft",
+       legend=c("Trend", "poly 3", "poly 5", "poly 8"),
+       col=c("black", "blue", "orange", "green"),
+       lwd=2)
+
+# AIC/BIC selection criteria
+AIC(fit_poly3, fit_poly5, fit_poly8)
+BIC(fit_poly3, fit_poly5, fit_poly8)
+```
+
+### Seasonal model
+```{r}
+time <- 1:length(season)
+
+# month index 1-12 repeating
+month <- cycle(unratensa_ts_interp)
+
+dat.season <- data.frame(
+  season = as.numeric(season),
+  time = time,
+  month = as.numeric(month)
+)
+
+# trig fit, 1 harmonic
+fit_season1 <- lm(season ~ 
+                    cos(2*pi*month/12) + sin(2*pi*month/12),
+                  data = dat.season)
+
+# trig fit, 3 harmonics
+fit_season2 <- lm(season ~ 
+                    cos(2*pi*month/12) + sin(2*pi*month/12) +
+                    cos(4*pi*month/12) + sin(4*pi*month/12) +
+                    cos(6*pi*month/12) + sin(6*pi*month/12),
+                  data = dat.season)
+
+# check model summaries
+summary(fit_season1)
+summary(fit_season2)
+
+# AIC/BIC comparison
+AIC(fit_season1, fit_season2)
+BIC(fit_season1, fit_season2)
+
+# fitted seasonal values
+season_fit1 <- fitted(fit_season1)
+season_fit2 <- fitted(fit_season2)
+
+# full plot
+plot(time, season, pch=".", col="black",
+     main="Seasonal Component with Trig Fits",
+     xlab="Time", ylab="Seasonal Component")
+
+lines(time, season_fit1, col="red", lwd=2)
+lines(time, season_fit2, col="blue", lwd=2)
+
+legend("topright",
+       legend=c("STL Seasonal Component", "1 Harmonic", "3 Harmonics"),
+       col=c("black", "red", "blue"),
+       lwd=2)
+```
+
+### Combined Models
+```{r}
+#trend comp
+tr_poly3 <- fitted(fit_poly3)
+tr_poly5 <- fitted(fit_poly5)
+tr_poly8 <- fitted(fit_poly8)
+
+#seasonal comp, monthly cycle, cycle() fixed to a 1-12 cycle
+month <- cycle(unratensa_ts_interp)
+
+# rebuild seasonal fits
+coef_s1 <- coef(fit_season1)
+coef_s2 <- coef(fit_season2)
+
+ss1 <- coef_s1[1] +
+       coef_s1[2]*cos(2*pi*month/12) +
+       coef_s1[3]*sin(2*pi*month/12)
+
+ss2 <- coef_s2[1] +
+       coef_s2[2]*cos(2*pi*month/12) +
+       coef_s2[3]*sin(2*pi*month/12) +
+       coef_s2[4]*cos(4*pi*month/12) +
+       coef_s2[5]*sin(4*pi*month/12) +
+       coef_s2[6]*cos(6*pi*month/12) +
+       coef_s2[7]*sin(6*pi*month/12)
+
+#combined regression-only models
+yhat1 <- tr_poly3 + ss1                 # simple
+yhat2 <- tr_poly5 + ss2                 # balanced
+yhat3 <- tr_poly8 + ss2                 # flexible / overfit comparison
+
+# convert fitted values to time series
+yhat1_ts <- ts(yhat1, start=start(unratensa_ts_interp), frequency=12)
+yhat2_ts <- ts(yhat2, start=start(unratensa_ts_interp), frequency=12)
+yhat3_ts <- ts(yhat3, start=start(unratensa_ts_interp), frequency=12)
+
+# final residuals for regression-only models
+final_resid1 <- unratensa_ts_interp - yhat1_ts
+final_resid2 <- unratensa_ts_interp - yhat2_ts
+final_resid3 <- unratensa_ts_interp - yhat3_ts
+
+# Function to add AR(5) residual errors
+add_ar5_errors <- function(yhat_ts, actual_ts) {
+  resid <- actual_ts - yhat_ts
+  
+  ar5_fit <- arima(as.numeric(resid),
+                   order = c(5, 0, 0),
+                   include.mean = TRUE)
+  
+  ar5_resid <- residuals(ar5_fit)
+  ar5_component <- as.numeric(resid) - ar5_resid
+  
+  yhat_ar5 <- as.numeric(yhat_ts) + ar5_component
+  
+  return(ts(yhat_ar5,
+            start = start(actual_ts),
+            frequency = frequency(actual_ts)))
+}
+
+# AR(5)-adjusted models
+yhat1_ar5_ts <- add_ar5_errors(yhat1_ts, unratensa_ts_interp)
+yhat2_ar5_ts <- add_ar5_errors(yhat2_ts, unratensa_ts_interp)
+yhat3_ar5_ts <- add_ar5_errors(yhat3_ts, unratensa_ts_interp)
+
+# final residuals for AR(5)-adjusted models
+final_resid1_ar5 <- unratensa_ts_interp - yhat1_ar5_ts
+final_resid2_ar5 <- unratensa_ts_interp - yhat2_ar5_ts
+final_resid3_ar5 <- unratensa_ts_interp - yhat3_ar5_ts
+```
+
+### Model comparison plots
+```{r}
+#Regression-only models
+plot(unratensa_ts_interp, col="black",
+     main="Model Comparison: Regression-Only Models",
+     ylab="Unemployment Rate")
+
+lines(yhat1_ts, col="red")
+lines(yhat2_ts, col="blue")
+lines(yhat3_ts, col="green")
+
+legend("topleft",
+       legend=c("Actual",
+                "Model 1: Poly3 + 1 Harmonic",
+                "Model 2: Poly5 + 3 Harmonics",
+                "Model 3: Poly8 + 3 Harmonics"),
+       col=c("black", "red", "blue", "green"),
+       lwd=2)
+
+#AR(5)-adjusted models
+plot(unratensa_ts_interp, col="black",
+     main="Model Comparison: Regression + AR(5) Errors",
+     ylab="Unemployment Rate")
+
+lines(yhat1_ar5_ts, col="red")
+lines(yhat2_ar5_ts, col="blue")
+lines(yhat3_ar5_ts, col="green")
+
+legend("topleft",
+       legend=c("Actual",
+                "Model 1 + AR(5)",
+                "Model 2 + AR(5)",
+                "Model 3 + AR(5)"),
+       col=c("black", "red", "blue", "green"),
+       lwd=2)
+```
+
+### Residual diagnostics
+```{r}
+# ACF comparisons for selected balanced model
+acf(final_resid2, main="ACF of Final Residuals: Model 2")
+acf(final_resid2_ar5, main="ACF: Model 2 + AR(5)")
+
+# Ljung-Box residual checks
+Box.test(final_resid1, lag=12, type="Ljung-Box")
+Box.test(final_resid2, lag=12, type="Ljung-Box")
+Box.test(final_resid3, lag=12, type="Ljung-Box")
+
+Box.test(final_resid1_ar5, lag=12, type="Ljung-Box")
+Box.test(final_resid2_ar5, lag=12, type="Ljung-Box")
+Box.test(final_resid3_ar5, lag=12, type="Ljung-Box")
+```
+
