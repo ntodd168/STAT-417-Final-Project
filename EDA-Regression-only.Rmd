@@ -33,19 +33,19 @@ sd(unratensa_ts_interp)
 ### smoothing and stl
 ```{r}
 #full data set and smoothing
-plot(unratensa_ts_interp, ylab="Unemployment Rate (NSA)", xlab = "time",
-     col = "black", main = "Monthly Unemployment Rate, USA, Not Seasonally Adjusted")
+plot(unratensa_ts_interp, ylab="Unemployment Rate", xlab = "time",
+     col = "black", main = "U.S. Monthly Unemployment Rate")
 lines(lowess(unratensa_ts_interp, f=0.01), lwd=2, col="red")
 
 #stl analysis
 unratensa_stl <- stl(unratensa_ts_interp, s.window = "periodic")
-plot(unratensa_stl)
+plot(unratensa_stl, title = "STL decomposition of UNRATENSA")
 
 season <- unratensa_stl$time.series[,1]
 trend <- unratensa_stl$time.series[,2]
 res <- unratensa_stl$time.series[,3]
 
-acf(res, main = "ACF(residuals) Unrate data")
+acf(res, main = "ACF(residuals) UNRATENSA data")
 ```
 
 ### Residual AR fit model
@@ -231,54 +231,74 @@ final_resid3_ar5 <- unratensa_ts_interp - yhat3_ar5_ts
 
 ### Model comparison plots
 ```{r}
-#Regression-only models
+# Regression-only models (Poly3 vs Poly5)
 plot(unratensa_ts_interp, col="black",
-     main="Model Comparison: Regression-Only Models",
+     main="Regression-Only Models: Poly3 vs Poly5",
      ylab="Unemployment Rate")
 
-lines(yhat1_ts, col="red")
-lines(yhat2_ts, col="blue")
-lines(yhat3_ts, col="green")
+lines(yhat1_ts, col="red", lwd=2)   # Poly3 + 1 harmonic
+lines(yhat2_ts, col="blue", lwd=2)  # Poly5 + 3 harmonics
 
 legend("topleft",
        legend=c("Actual",
-                "Model 1: Poly3 + 1 Harmonic",
-                "Model 2: Poly5 + 3 Harmonics",
-                "Model 3: Poly8 + 3 Harmonics"),
-       col=c("black", "red", "blue", "green"),
+                "Poly3 + 1 Harmonic",
+                "Poly5 + 3 Harmonics"),
+       col=c("black", "red", "blue"),
        lwd=2)
 
-#AR(5)-adjusted models
+
+# AR(5)-adjusted models (Poly3 vs Poly5)
 plot(unratensa_ts_interp, col="black",
-     main="Model Comparison: Regression + AR(5) Errors",
+     main="Regression + AR(5) Errors: Poly3 vs Poly5",
      ylab="Unemployment Rate")
 
-lines(yhat1_ar5_ts, col="red")
-lines(yhat2_ar5_ts, col="blue")
-lines(yhat3_ar5_ts, col="green")
+lines(yhat1_ar5_ts, col="red", lwd=2)
+lines(yhat2_ar5_ts, col="blue", lwd=2)
 
 legend("topleft",
        legend=c("Actual",
-                "Model 1 + AR(5)",
-                "Model 2 + AR(5)",
-                "Model 3 + AR(5)"),
-       col=c("black", "red", "blue", "green"),
+                "Poly3 + AR(5)",
+                "Poly5 + AR(5)"),
+       col=c("black", "red", "blue"),
+       lwd=2)
+
+
+# Recent period comparison (AR models only)
+start_plot <- c(2000, 1)
+
+plot(window(unratensa_ts_interp, start=start_plot), col="black",
+     main="Recent Period: AR(5)-Adjusted Model Comparison",
+     ylab="Unemployment Rate",
+     xlab="Time")
+
+lines(window(yhat1_ar5_ts, start=start_plot), col="red", lwd=2)   # Poly3 + AR(5)
+lines(window(yhat2_ar5_ts, start=start_plot), col="blue", lwd=2)  # Poly5 + AR(5)
+
+legend("topleft",
+       legend=c("Actual",
+                "Poly3 + Trig + AR(5)",
+                "Poly5 + Trig + AR(5)"),
+       col=c("black", "red", "blue"),
        lwd=2)
 ```
 
 ### Residual diagnostics
 ```{r}
-# ACF comparisons for selected balanced model
-acf(final_resid2, main="ACF of Final Residuals: Model 2")
-acf(final_resid2_ar5, main="ACF: Model 2 + AR(5)")
+# ACF comparisons for regression-only models
+acf(final_resid1, main="ACF: Poly3 + Trig")
+acf(final_resid2, main="ACF: Poly5 + Trig")
 
-# Ljung-Box residual checks
+# ACF comparisons for AR(5)-adjusted models
+acf(final_resid1_ar5, main="ACF: Poly3 + Trig + AR(5)")
+acf(final_resid2_ar5, main="ACF: Poly5 + Trig + AR(5)")
+
+
+# Ljung-Box residual checks for regression-only models
 Box.test(final_resid1, lag=12, type="Ljung-Box")
 Box.test(final_resid2, lag=12, type="Ljung-Box")
-Box.test(final_resid3, lag=12, type="Ljung-Box")
 
+# Ljung-Box residual checks for AR(5)-adjusted models
 Box.test(final_resid1_ar5, lag=12, type="Ljung-Box")
 Box.test(final_resid2_ar5, lag=12, type="Ljung-Box")
-Box.test(final_resid3_ar5, lag=12, type="Ljung-Box")
 ```
 
